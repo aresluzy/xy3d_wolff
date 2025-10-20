@@ -1,57 +1,98 @@
-def wolff_update(spins, J, T):
+from collections import deque
+from typing import Optional
+import numpy as np
+
+def wolff_update_xy(
+    spins: np.ndarray,
+    J: float,
+    T: float,
+    rng: Optional[np.random.Generator] = None,
+) -> int:
+    """
+    One Wolff cluster update for the 3D XY model on an LxLxL lattice.
+
+    Parameters
+    ----------
+    spins : np.ndarray
+        Shape (L, L, L, 2). Each spin is a 2D unit vector (cos θ, sin θ).
+    J : float
+        Ferromagnetic coupling (>0).
+    T : float
+        Temperature (k_B = 1).
+    rng : np.random.Generator, optional
+        Numpy RNG for reproducibility. If None, uses default_rng().
+
+    Returns
+    -------
+    int
+        Size of the flipped cluster.
+    """
+    if rng is None:
+        rng = np.random.default_rng()
+
+    if T <= 0:
+        raise ValueError("Temperature T must be > 0.")
+    if spins.ndim != 4 or spins.shape[-1] != 2:
+        raise ValueError("spins must have shape (L, L, L, 2) for XY spins.")
+
     beta = 1.0 / T
     L = spins.shape[0]
-    
-    # Choose a random reflection axis
-    phi = np.random.uniform(0, 2 * np.pi)
-    r = np.array([np.cos(phi), np.sin(phi)])  # Unit vector in x-y plane
 
-    # Choose a random seed spin
-    i0, j0, k0 = np.random.randint(0, L, 3)
-    S_i0 = spins[i0, j0, k0]
-    
-    # Reflect the seed spin
-    S_i0_new = S_i0 - 2 * np.dot(S_i0, r) * r
-    spins[i0, j0, k0] = S_i0_new
+    # 1) Choose a random reflection axis r (unit vector in the plane)
+    phi = rng.uniform(0.0, 2.0 * np.pi)
+    r = np.array([np.cos(phi), np.sin(phi)], dtype=spins.dtype)
 
-    # Initialize cluster
-    cluster = set()
-    cluster.add((i0, j0, k0))
+    # Precompute fixed projections from the ORIGINAL configuration
+    # proj[i,j,k] = s_{ijk} · r
+    proj = spins[..., 0] * r[0] + spins[..., 1] * r[1]
 
-    # Use a stack for depth-first search
-    stack = deque()
-    stack.append((i0, j0, k0))
+    # 2) Random seed site
+    i0, j0, k0 = rng.integers(0, L, size=3)
 
-    # Keep track of flipped spins
-    flipped = np.zeros(spins.shape[:3], dtype=bool)
-    flipped[i0, j0, k0] = True
+    # 3) Grow cluster using fixed projections (embedded Ising)
+    in_cluster = np.zeros(spins.shape[:3], dtype=bool)
+    in_cluster[i0, j0, k0] = True
+    stack = deque([(i0, j0, k0)])
 
-    while stack:
-        i, j, k = stack.pop()
-        S_i = spins[i, j, k]
-
-        # Neighbor indices with periodic boundary conditions
-        neighbors = [
+    # Helper for periodic neighbors
+    def neighbors(i, j, k):
+        return (
             ((i + 1) % L, j, k),
             ((i - 1) % L, j, k),
             (i, (j + 1) % L, k),
             (i, (j - 1) % L, k),
             (i, j, (k + 1) % L),
-            (i, j, (k - 1) % L)
-        ]
+            (i, j, (k - 1) % L),
+        )
 
-        for ni, nj, nk in neighbors:
-            if not flipped[ni, nj, nk]:
-                S_j = spins[ni, nj, nk]
-                delta = 2 * beta * J * np.dot(S_i, r) * np.dot(S_j, r)
-                p_add = 1 - np.exp(min(0, delta))
+    # Bond-add probability uses POSITIVE projection product only
+    # p_add = 1 - exp(-2 * beta * J * max(0, (s_i·r)(s_j·r)))
+    # Efficiently: only try to add when proj_i * proj_j > 0.
+    two_beta_J = 2.0 * beta * J
 
-                if np.random.rand() < p_add:
-                    # Reflect spin S_j
-                    S_j_new = S_j - 2 * np.dot(S_j, r) * r
-                    spins[ni, nj, nk] = S_j_new
-                    flipped[ni, nj, nk] = True
-                    cluster.add((ni, nj, nk))
-                    stack.append((ni, nj, nk))
+    while stack:
+        i, j, k = stack.pop()
+        proj_i = proj[i, j, k]
 
-    return len(cluster)
+        for ni, nj, nk in neighbors(i, j, k):
+            if in_cluster[ni, nj, nk]:
+                continue
+
+            prod = proj_i * proj[ni, nj, nk]
+            if prod <= 0.0:
+                continue  # cannot bond if projections have opposite signs or zero
+
+            p_add = 1.0 - np.exp(-two_beta_J * prod)
+            if rng.random() < p_add:
+                in_cluster[ni, nj, nk] = True
+                stack.append((ni, nj, nk))
+
+    # 4) Reflect the entire cluster at once: s -> s - 2 (s·r) r
+    # Vectorized reflection for all cluster spins
+    idx = np.where(in_cluster)
+    # current projections for those sites (still original spins)
+    proj_cluster = proj[idx]  # shape (Nc,)
+    # subtract 2*(proj)*r from the 2D vectors
+    spins[idx + (slice(None),)] -= (2.0 * proj_cluster)[:, None] * r[None, :]
+
+    return int(in_cluster.sum())
