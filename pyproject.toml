@@ -1,0 +1,23 @@
+[project]
+name = "xy3d-wolff"
+version = "0.1.0"
+description = "3D XY model simulation using Wolff cluster algorithm"
+authors = [{ name = "Your Name" }]
+requires-python = ">=3.11"
+dependencies = [
+    "numpy",
+    "scipy",
+    "matplotlib",
+]
+
+[dependency-groups]
+dev = [
+    "pytest",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
