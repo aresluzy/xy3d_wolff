@@ -1,9 +1,18 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
 [project]
-name = "xy3d-wolff"
+name = "APC524_spin"
 version = "0.1.0"
-description = "3D XY model simulation using Wolff cluster algorithm"
-authors = [{ name = "Your Name" }]
-requires-python = ">=3.11"
+description = "3D XY model Monte Carlo using Wolff cluster updates with improved estimators and finite-size scaling."
+authors = [
+    { name = "Zhengyi Lu" }
+]
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+
 dependencies = [
     "numpy",
     "scipy",
@@ -13,11 +22,12 @@ dependencies = [
 [dependency-groups]
 dev = [
     "pytest",
+    "ruff",
+    "black",
+]
+test = [
+    "pytest",
 ]
 
-[build-system]
-requires = ["hatchling"]
-build-backend = "hatchling.build"
-
-[tool.pytest.ini_options]
-testpaths = ["tests"]
+[tool.hatch.build.targets.wheel]
+packages = ["src/xy3d_wolff"]
