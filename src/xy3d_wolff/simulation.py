@@ -5,22 +5,13 @@ from typing import Sequence, Dict, Any
 
 import numpy as np
 
-from .core import (
-    run_simulation,
-    run_improved_simulation,
-    simulate_all_data,
-    improved_simulate_all_data,
-    plot_simulation_results,
-    data_collapse_specific_heat,
-    data_collapse_susceptibility,
-    data_collapse_magnetization,
-)
+from . import core
 
 
 @dataclass
 class SimulationConfig:
     """
-    Configuration for XY model simulations.
+    Configuration for XY Monte Carlo simulations.
 
     Attributes
     ----------
@@ -29,9 +20,9 @@ class SimulationConfig:
     n_steps : int
         Total Wolff updates per temperature.
     n_equil : int
-        Number of equilibration steps discarded.
+        Number of equilibration steps to discard.
     L_list : sequence of int
-        System sizes to simulate.
+        Set of linear system sizes.
     T_list : sequence of float
         Temperatures to simulate.
     """
@@ -42,15 +33,71 @@ class SimulationConfig:
     T_list: Sequence[float]
 
 
-class SimulationRunner:
+class XYSimulation:
     """
-    High-level interface for running simulations and plotting results.
+    Represents a simulation of a single (L, T) pair.
+    """
 
-    This class wraps the original functions in core.py. It does not
-    change any computational details.
+    def __init__(self, L: int, T: float, J: float, n_steps: int, n_equil: int):
+        """
+        Parameters
+        ----------
+        L : int
+            Linear system size.
+        T : float
+            Temperature.
+        J : float
+            Coupling constant.
+        n_steps : int
+            Number of Wolff steps.
+        n_equil : int
+            Number of equilibration steps.
+        """
+        self.L = L
+        self.T = T
+        self.J = J
+        self.n_steps = n_steps
+        self.n_equil = n_equil
+
+    def run_basic(self) -> Dict[str, Any]:
+        """
+        Run the basic simulation using run_simulation from core.
+
+        Returns
+        -------
+        dict
+            Result dictionary with observables and time series.
+        """
+        return core.run_simulation(
+            self.L, self.J, self.T, self.n_steps, self.n_equil
+        )
+
+    def run_improved(self) -> Dict[str, Any]:
+        """
+        Run the improved-estimator simulation using run_improved_simulation.
+
+        Returns
+        -------
+        dict
+            Result dictionary with cluster-based estimators.
+        """
+        return core.run_improved_simulation(
+            self.L, self.J, self.T, self.n_steps, self.n_equil
+        )
+
+
+class XYStudy:
+    """
+    Study object that runs simulations over sets of (L, T).
     """
 
     def __init__(self, config: SimulationConfig):
+        """
+        Parameters
+        ----------
+        config : SimulationConfig
+            Global simulation configuration.
+        """
         self.config = config
 
     @property
@@ -73,144 +120,60 @@ class SimulationRunner:
     def T_list(self) -> np.ndarray:
         return np.array(self.config.T_list, dtype=float)
 
-    def run_single(self, L: int, T: float) -> Dict[str, Any]:
+    def run_basic_all(self) -> Dict[int, Dict[float, Any]]:
         """
-        Run a single system size and temperature.
-
-        Parameters
-        ----------
-        L : int
-            Linear system size.
-        T : float
-            Temperature.
+        Run run_simulation over all L and T using simulate_all_data.
 
         Returns
         -------
         dict
-            Result dictionary from run_simulation.
+            Nested dictionary results[L][T].
         """
-        return run_simulation(L, self.J, T, self.n_steps, self.n_equil)
+        return core.simulate_all_data(
+            self.L_list,
+            self.T_list,
+            self.J,
+            self.n_steps,
+            self.n_equil,
+        )
+
+    def run_improved_all(self) -> Dict[int, Dict[float, Any]]:
+        """
+        Run improved simulations over all L and T using improved_simulate_all_data.
+
+        Returns
+        -------
+        dict
+            Nested dictionary results[L][T].
+        """
+        return core.improved_simulate_all_data(
+            self.L_list,
+            self.T_list,
+            self.J,
+            self.n_steps,
+            self.n_equil,
+        )
+
+    def run_single_basic(self, L: int, T: float) -> Dict[str, Any]:
+        """
+        Run a single (L, T) basic simulation.
+
+        Returns
+        -------
+        dict
+            Result from run_simulation.
+        """
+        sim = XYSimulation(L, T, self.J, self.n_steps, self.n_equil)
+        return sim.run_basic()
 
     def run_single_improved(self, L: int, T: float) -> Dict[str, Any]:
         """
-        Run a single system size and temperature using improved estimators.
+        Run a single (L, T) improved simulation.
 
         Returns
         -------
         dict
-            Result dictionary from run_improved_simulation.
+            Result from run_improved_simulation.
         """
-        return run_improved_simulation(L, self.J, T, self.n_steps, self.n_equil)
-
-    def run_basic(self) -> Dict[int, Dict[float, Any]]:
-        """
-        Run the basic simulation over all L and T in the configuration.
-
-        Returns
-        -------
-        dict
-            Nested dictionary as returned by simulate_all_data.
-        """
-        return simulate_all_data(
-            self.L_list,
-            self.T_list,
-            self.J,
-            self.n_steps,
-            self.n_equil,
-        )
-
-    def run_with_estimator(self) -> Dict[int, Dict[float, Any]]:
-        """
-        Run the improved-estimator simulation over all L and T.
-
-        Returns
-        -------
-        dict
-            Nested dictionary as returned by improved_simulate_all_data.
-        """
-        return improved_simulate_all_data(
-            self.L_list,
-            self.T_list,
-            self.J,
-            self.n_steps,
-            self.n_equil,
-        )
-
-    def plot_basic(self, simulation_results: Dict[int, Dict[float, Any]]) -> None:
-        """
-        Reproduce the main observables plots.
-
-        Parameters
-        ----------
-        simulation_results : dict
-            Output from run_basic or simulate_all_data.
-        """
-        plot_simulation_results(simulation_results, self.L_list, self.T_list)
-
-    def collapse_specific_heat(
-        self,
-        simulation_results: Dict[int, Dict[float, Any]],
-        Tc: float,
-        alpha: float,
-        nu: float,
-        plot: bool = True,
-    ):
-        """
-        Perform finite-size scaling collapse for specific heat.
-
-        Returns
-        -------
-        dict
-            Collapsed data structure from data_collapse_specific_heat.
-        """
-        return data_collapse_specific_heat(
-            simulation_results,
-            self.L_list,
-            self.T_list,
-            Tc,
-            alpha,
-            nu,
-            plot=plot,
-        )
-
-    def collapse_susceptibility(
-        self,
-        simulation_results: Dict[int, Dict[float, Any]],
-        Tc: float,
-        gamma: float,
-        nu: float,
-        plot: bool = True,
-    ):
-        """
-        Perform finite-size scaling collapse for susceptibility.
-        """
-        return data_collapse_susceptibility(
-            simulation_results,
-            self.L_list,
-            self.T_list,
-            Tc,
-            gamma,
-            nu,
-            plot=plot,
-        )
-
-    def collapse_magnetization(
-        self,
-        simulation_results: Dict[int, Dict[float, Any]],
-        Tc: float,
-        beta: float,
-        nu: float,
-        plot: bool = True,
-    ):
-        """
-        Perform finite-size scaling collapse for magnetization.
-        """
-        return data_collapse_magnetization(
-            simulation_results,
-            self.L_list,
-            self.T_list,
-            Tc,
-            beta,
-            nu,
-            plot=plot,
-        )
+        sim = XYSimulation(L, T, self.J, self.n_steps, self.n_equil)
+        return sim.run_improved()
