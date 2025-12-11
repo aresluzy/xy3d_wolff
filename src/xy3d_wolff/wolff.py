@@ -2,7 +2,7 @@ from __future__ import annotations
 from collections import deque
 from dataclasses import dataclass
 import numpy as np
-import src.xy3d_wolff.core as core
+from src.xy3d_wolff import core
 
 
 @dataclass

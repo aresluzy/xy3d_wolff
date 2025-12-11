@@ -1,12 +1,11 @@
 from .wolff import XYLattice, WolffClusterUpdater
-from .simulation import SimulationConfig, XYSimulation, XYStudy
+from .simulation import XYSimulation, XYStudy
 from .analysis import XYAnalysis
 from .plotting import XYPlotter
 
 __all__ = [
     "XYLattice",
     "WolffClusterUpdater",
-    "SimulationConfig",
     "XYSimulation",
     "XYStudy",
     "XYAnalysis",

@@ -7,6 +7,29 @@ from scipy.interpolate import UnivariateSpline
 
 # Compute critical parameters
 def compute_improved_structure_factor(cluster_positions, L):
+    """
+    Compute the improved estimator for the structure factor S(q)
+    using cluster positions from a Wolff update.
+
+    This uses the cluster-improved estimator for the structure factor
+    at the three smallest non-zero momenta along the Cartesian axes:
+    q = (2π/L, 0, 0), (0, 2π/L, 0), (0, 0, 2π/L).
+
+    Parameters
+    ----------
+    cluster_positions : list of tuple[int, int, int] or ndarray
+        List of lattice coordinates (i, j, k) belonging to the cluster.
+    L : int
+    Linear system size. The lattice is assumed to be of size L^3.
+
+    Returns
+    -------
+    cluster_Sq : ndarray, shape (3,)
+        Improved-estimator structure factor S(q) for the three q-vectors.
+    q_vectors : list of ndarray
+        List of three q-vectors (each shape (3,)) corresponding to the
+        smallest non-zero momenta along x, y, and z.
+    """
     cluster_size = len(cluster_positions)
 
     q_vectors = [
@@ -29,6 +52,26 @@ def compute_improved_structure_factor(cluster_positions, L):
     return cluster_Sq, q_vectors
 
 def compute_correlation_length_from_Sq(structure_factors, q_vectors, L):
+    """
+    Estimate a correlation length from structure factors S(q)
+    using a second-moment-like estimator.
+
+    Parameters
+    ----------
+    structure_factors : array-like
+        Values of S(q) at a set of small momentum vectors.
+    q_vectors : array-like
+        Momentum vectors corresponding to `structure_factors`.
+        Typically a list/array of shape (N_q, 3).
+    L : int
+        Linear system size. (Currently not used explicitly.)
+
+    Returns
+    -------
+    xi : float
+        Estimated correlation length. Returns np.inf if the moments
+        are not positive (mu_0 <= 0 or mu_2 <= 0).
+    """
     d = 3  # Spatial dimensionality
     S_q = np.array(structure_factors)  # Structure factors
     q_values = np.array(q_vectors)  # Magnitudes of q vectors
@@ -85,6 +128,26 @@ def estimate_autocorrelation_time(autocorr):
     return tau_int
 
 def compute_susceptibility_with_estimator(magnetizations, V, T):
+    """
+    Compute the magnetic susceptibility and its statistical error estimate
+    using improved-estimator magnetization data.
+
+    Parameters
+    ----------
+    magnetizations : array-like
+        Array of magnetization per site (or per volume) measurements.
+    V : int or float
+        System volume (e.g. L^3).
+    T : float
+        Temperature.
+
+    Returns
+    -------
+    chi : float
+        Estimated susceptibility.
+    error_chi : float
+        Standard error estimate of the susceptibility.
+    """
     M_abs = np.array(magnetizations) * V  # Total magnetization
     M_abs_mean = np.mean(M_abs)
     M2_mean = np.mean(M_abs ** 2)
@@ -99,7 +162,24 @@ def compute_susceptibility_with_estimator(magnetizations, V, T):
 
 def compute_F(spins, L):
     """
-    Compute F = \hat{G}(k) at |k| = 2π/L.
+    Compute F = Ĝ(k) at |k| = 2π/L for the 3D XY model.
+
+    Here Ĝ(k) is the Fourier transform of the spin field at the
+    smallest non-zero momentum magnitude along the three axes, and
+    this function returns the average over those directions.
+
+    Parameters
+    ----------
+    spins : ndarray, shape (L, L, L, 2)
+        Spin configuration, where the last dimension holds (Sx, Sy).
+    L : int
+        Linear system size.
+
+    Returns
+    -------
+    F_mean : float
+        Direction-averaged value of |∑_r S(r) e^{-i k·r}|^2 / V
+        for |k| = 2π/L.
     """
     V = L ** 3
     # Smallest non-zero momentum vectors
@@ -138,6 +218,28 @@ def compute_F(spins, L):
     return F_mean
 
 def compute_xi_second_moment(chi, F, L):
+    """
+    Compute the second-moment correlation length from susceptibility
+    and Fourier amplitude F at |k| = 2π/L.
+
+    The estimator is
+
+        xi_2nd = sqrt( |chi/F - 1| / (4 sin^2(pi/L)) ).
+
+    Parameters
+    ----------
+    chi : float
+        Susceptibility (typically χ = ⟨M^2⟩ / V T or similar).
+    F : float
+        Fourier amplitude F = Ĝ(k) at the smallest non-zero |k|.
+    L : int
+        Linear system size.
+
+    Returns
+    -------
+    xi_2nd : float
+        Second-moment correlation length estimate.
+    """
     pi_over_L = np.pi / L
     sin_term = np.sin(pi_over_L)
     denominator = 4 * sin_term ** 2
@@ -146,6 +248,19 @@ def compute_xi_second_moment(chi, F, L):
     return xi_2nd
 
 def compute_magnetization(spins):
+    """
+    Compute the magnetization per site for a 3D XY spin configuration.
+
+    Parameters
+    ----------
+    spins : ndarray, shape (L, L, L, 2)
+        Spin configuration, where the last axis is (Sx, Sy).
+
+    Returns
+    -------
+    m : float
+        Magnetization per site, m = |∑_r S(r)| / V, with V = L^3.
+    """
     total_spin = np.sum(spins, axis=(0, 1, 2))
     M = np.linalg.norm(total_spin)
     V = spins.shape[0] ** 3
@@ -153,6 +268,26 @@ def compute_magnetization(spins):
     return m
 
 def compute_susceptibility(magnetizations, V, T):
+    """
+    Compute the magnetic susceptibility and its statistical error
+    from magnetization-per-site measurements.
+
+    Parameters
+    ----------
+    magnetizations : array-like
+        Measurements of magnetization per site m.
+    V : int or float
+        System volume (e.g. L^3).
+    T : float
+        Temperature.
+
+    Returns
+    -------
+    chi : float
+        Susceptibility estimate.
+    error_chi : float
+        Standard error of the susceptibility.
+    """
     M_abs = np.array(magnetizations) * V  # Total magnetization
     M_abs_mean = np.mean(M_abs)
     M2_mean = np.mean(M_abs ** 2)
@@ -166,6 +301,24 @@ def compute_susceptibility(magnetizations, V, T):
     return chi, error_chi
 
 def compute_binder_cumulant(magnetizations, V):
+    """
+    Compute the Binder cumulant U and its error from magnetization data.
+
+    Parameters
+    ----------
+    magnetizations : array-like
+        Magnetization per site m for each measurement.
+    V : int or float
+        System volume (e.g. L^3).
+
+    Returns
+    -------
+    U : float
+        Binder cumulant U = 1 - ⟨M^4⟩ / (3 ⟨M^2⟩^2),
+        where M is the total magnetization.
+    error_U : float
+        Error estimate for the Binder cumulant.
+    """
     M_abs = np.array(magnetizations) * V
     M2 = M_abs ** 2
     M4 = M_abs ** 4
@@ -182,6 +335,22 @@ def compute_binder_cumulant(magnetizations, V):
     return U, error_U
 
 def compute_energy(spins, J):
+    """
+    Compute the total energy of a 3D XY configuration
+    with nearest-neighbor interactions and coupling J.
+
+    Parameters
+    ----------
+    spins : ndarray, shape (L, L, L, 2)
+        Spin configuration, last axis is (Sx, Sy).
+    J : float
+        Coupling constant.
+
+    Returns
+    -------
+    E : float
+        Total energy. Each bond is counted twice.
+    """
     L = spins.shape[0]
     E = 0.0
     for shift in [(1, 0, 0), (0, 1, 0), (0, 0, 1)]:
@@ -191,6 +360,25 @@ def compute_energy(spins, J):
     return E  # Each bond is counted twice
 
 def compute_specific_heat(energies, V, T):
+    """
+    Compute the specific heat and its error using block variance analysis.
+
+    Parameters
+    ----------
+    energies : array-like
+        Energy measurements E for different Monte Carlo samples.
+    V : int or float
+        System volume (e.g. L^3).
+    T : float
+        Temperature.
+
+    Returns
+    -------
+    C : float
+        Specific heat (per ??? – note C is not divided by V in this code).
+    sigma_C : float
+        Error estimate for the specific heat, including block analysis.
+    """
     E = np.array(energies)
     N = len(E)
     E_mean = np.mean(E)
@@ -221,6 +409,24 @@ def compute_specific_heat(energies, V, T):
     return C, sigma_C
 
 def compute_structure_factor(spins, n_max=5):
+    """
+    Compute the structure factor S(q) for multiple momenta
+    along the Cartesian axes.
+
+    Parameters
+    ----------
+    spins : ndarray, shape (L, L, L, 2)
+        Spin configuration, last axis is (Sx, Sy).
+    n_max : int, optional
+        Maximum integer multiple n for q = 2π n / L.
+
+    Returns
+    -------
+    S_q : ndarray
+        Structure factor values for all considered q-vectors.
+    q_values : ndarray
+        Magnitudes |q| corresponding to each S(q).
+    """
     L = spins.shape[0]
     N = L ** 3
     S_q = []
@@ -246,6 +452,19 @@ def compute_structure_factor(spins, n_max=5):
     return np.array(S_q), np.array(q_values)
 
 def compute_S0(spins):
+    """
+    Compute S(0), the zero-momentum structure factor.
+
+    Parameters
+    ----------
+    spins : ndarray, shape (L, L, L, 2)
+        Spin configuration, last axis is (Sx, Sy).
+
+    Returns
+    -------
+    S0 : float
+        Zero-momentum structure factor S(0) = |∑_r S(r)|^2 / N.
+    """
     # Convert spins to complex numbers
     spin_complex = spins[..., 0] + 1j * spins[..., 1]  # Shape: (L, L, L)
     N = spins.shape[0] ** 3
@@ -253,6 +472,23 @@ def compute_S0(spins):
     return S0
 
 def estimate_correlation_length(S0, S_q, L):
+    """
+    Estimate a correlation length from S(0) and S(q) at |q| = 2π/L.
+
+    Parameters
+    ----------
+    S0 : float
+        Zero-momentum structure factor.
+    S_q : float
+        Structure factor at the smallest non-zero momentum |q| = 2π/L.
+    L : int
+        Linear system size.
+
+    Returns
+    -------
+    xi : float
+        Estimated correlation length. Returns np.inf if S_q <= 0 or S0 <= S_q.
+    """
     q = 2 * np.pi / L  # Smallest non-zero momentum
 
     # Ensure S_q is not zero to avoid division by zero
@@ -264,6 +500,29 @@ def estimate_correlation_length(S0, S_q, L):
     return xi
 
 def compute_correlation_length_from_cluster_sizes(cluster_sizes, V, num_bins=100):
+    """
+    Estimate a correlation length from the distribution of cluster sizes.
+
+    Parameters
+    ----------
+    cluster_sizes : array-like
+        Cluster sizes normalized by volume (e.g. s / V).
+    V : int or float
+        System volume used to un-normalize cluster sizes.
+    num_bins : int, optional
+        Number of histogram bins for building n_s.
+
+    Returns
+    -------
+    xi : float
+        Correlation length estimate derived from the ratio of
+        moments of the cluster-size distribution.
+
+    Raises
+    ------
+    ValueError
+        If the denominator in the correlation length expression is zero.
+    """
     # Convert cluster sizes to actual sizes (since they are normalized by V)
     actual_cluster_sizes = np.array(cluster_sizes) * V  # Now cluster sizes are integers
 
@@ -303,7 +562,26 @@ def compute_correlation_length_from_cluster_sizes(cluster_sizes, V, num_bins=100
 
 def compute_spin_correlation(spins, max_r):
     """
-    Compute spin-spin correlation function G(r).
+    Compute the spin–spin correlation function G(r) up to distance max_r.
+
+    For each integer separation r = 1, ..., max_r, this computes
+
+        G(r) = (1/N) ∑_i S_i · S_{i+r},
+
+    where the shift (i → i+r) is applied along all three directions with
+    periodic boundary conditions, and N = L^3 is the number of lattice sites.
+
+    Parameters
+    ----------
+    spins : ndarray, shape (L, L, L, 2)
+        Spin configuration, where the last axis is (Sx, Sy).
+    max_r : int
+        Maximum separation r for which to compute G(r).
+
+    Returns
+    -------
+    G_r : ndarray, shape (max_r,)
+        Spin–spin correlation function values G(r) for r = 1, ..., max_r.
     """
     L = spins.shape[0]
     G_r = np.zeros(max_r)
@@ -325,7 +603,22 @@ def compute_spin_correlation(spins, max_r):
 
 def compute_structure_factor(spins, q_vals):
     """
-    Compute structure factor S(q) using Fourier transform.
+    Compute the structure factor S(q) using a simple Fourier transform
+    along one lattice direction.
+
+    Parameters
+    ----------
+    spins : ndarray, shape (L, L, L, 2)
+        Spin configuration, where the last axis is (Sx, Sy) or some
+        spin components.
+    q_vals : array-like
+        List or array of momentum values q (typically scalars) for which
+        S(q) should be computed.
+
+    Returns
+    -------
+    S_q : ndarray, shape (len(q_vals),)
+        Structure factor values S(q) for each q in q_vals.
     """
     L = spins.shape[0]
     N = L**3
@@ -340,217 +633,40 @@ def compute_structure_factor(spins, q_vals):
 
 def fit_correlation_length(G_r):
     """
-    Fit G(r) to extract correlation length ξ.
-    """
+    Fit the real-space correlation function G(r) to an exponential decay
+    to extract the correlation length ξ.
 
+    The fitting model is
+
+        G(r) ≈ A * exp(-r / ξ),
+
+    where ξ and A are fit parameters.
+
+    Parameters
+    ----------
+    G_r : ndarray
+        Values of the correlation function G(r) for r = 1, 2, ..., len(G_r).
+
+    Returns
+    -------
+    xi : float
+        Fitted correlation length ξ.
+
+    Notes
+    -----
+    This function uses `scipy.optimize.curve_fit` under the hood, so
+    make sure you have::
+
+        from scipy.optimize import curve_fit
+
+    imported in the module where this function is defined.
+    """
     def exponential_decay(r, xi, A):
         return A * np.exp(-r / xi)
 
     r_vals = np.arange(1, len(G_r) + 1)
     popt, _ = curve_fit(exponential_decay, r_vals, G_r, p0=[1.0, 1.0])
     return popt[0]  # Return ξ
-
-# Simulation Runners
-## No estimators
-def run_simulation(L, J, T, n_steps, n_equil):
-    spins = initialize_lattice(L)
-    V = L ** 3
-    energies = []
-    magnetizations = []
-    cluster_sizes = []
-    structure_factors = []
-    correlation_lengths = []
-
-    # Equilibration
-    for _ in range(n_equil):
-        wolff_update(spins, J, T)
-
-    # G_rs = np.zeros(L//2)
-    # Measurement
-    for step in range(n_steps):
-        cluster_size = wolff_update(spins, J, T)
-        cluster_sizes.append(cluster_size / V)
-
-        E = compute_energy(spins, J)
-        energies.append(E / V)
-
-        m = compute_magnetization(spins)
-        magnetizations.append(m)
-
-        # # Compute structure factor
-        # S_q, q_values = compute_structure_factor(spins)
-        # S0 = compute_S0(spins)
-        # structure_factors.append(S_q)
-
-        # xis = []
-        # for S_qi in S_q:
-        #     xi_i = estimate_correlation_length(S0, S_qi, L)
-        #     xis.append(xi_i)
-        # xi = np.mean(xis)
-        # correlation_lengths.append(xi)
-    #     G_r = compute_spin_correlation(spins, max_r = L//2)
-    #     G_rs += G_r
-
-    # G_r_mean = G_rs / n_steps
-
-    # correlation_lengths = fit_correlation_length(G_r_mean)
-    # Convert lists to NumPy arrays
-    magnetizations = np.array(magnetizations)
-    energies = np.array(energies)
-    # correlation_lengths = np.array(correlation_lengths)
-    # structure_factors = np.array(structure_factors)  # Shape: (n_steps, 3)
-
-    # Compute susceptibility, specific heat, and Binder cumulant with errors
-    chi, error_chi = compute_susceptibility(magnetizations, V, T)
-    C, error_C = compute_specific_heat(energies, V, T)
-    U, error_U = compute_binder_cumulant(magnetizations, V)
-
-    # Compute average structure factor and its error
-    # S_q_mean = np.mean(structure_factors, axis=0)  # Mean over steps, shape: (3,)
-    # S_q_std = np.std(structure_factors, axis=0) / np.sqrt(n_steps)
-
-    # # Compute average correlation length and its error
-    # xi_mean = np.mean(correlation_lengths)
-    # xi_std = np.std(correlation_lengths) / np.sqrt(n_steps)
-
-    return {
-        'magnetizations': magnetizations,
-        'energies': energies,
-        'cluster_sizes': cluster_sizes,
-        'susceptibility': (chi, error_chi),
-        'specific_heat': (C, error_C),
-        'binder_cumulant': (U, error_U),
-        # 'structure_factor': (S_q_mean, S_q_std),
-        # 'correlation_length': (xi_mean, xi_std),
-        # 'correlation_length': (correlation_lengths),
-        'spin': spins,
-    }
-
-def simulate_all_data(L_list, T_list, J, n_steps, n_equil):
-    all_data = {}
-    print(T_list)
-    for L in L_list:
-        all_data[L] = {}
-        V = L ** 3
-
-        for T in T_list:
-            all_data[L][T] = run_simulation(L, J, T, n_steps, n_equil)
-            U, error_U = all_data[L][T]['binder_cumulant']
-            chi, error_chi = all_data[L][T]['susceptibility']
-            C, error_C = all_data[L][T]['specific_heat']
-            # xi, error_xi = all_data[L][T]['correlation_length']
-            # xi = all_data[L][T]['correlation_length']
-
-            print(f"L={L}, T={T:.2f}, Binder Cumulant U={U:.4f}, "
-                  f"Susceptibility={chi:.4f}, Specific Heat={C:.4f}")  # Correlation Length={xi:.4f}")
-
-    return all_data
-
-## With estimators
-def run_improved_simulation(L, J, T, n_steps, n_equil):
-    spins = initialize_lattice(L)
-    V = L ** 3
-    energies = []
-    magnetizations = []
-    cluster_sizes = []
-    m2_improved = []
-    # structure_factors = []
-    # correlation_lengths = []
-    xi_2nd_values = []
-
-    # Equilibration
-    for _ in range(n_equil):
-        cluster_size, cluster_Sq, q_vectors = wolff_update_with_estimator(spins, J, T)
-
-    # Measurement
-    for step in range(n_steps):
-        cluster_size, cluster_Sq, q_vectors = wolff_update_with_estimator(spins, J, T)
-        cluster_sizes.append(cluster_size / V)
-
-        E = compute_energy(spins, J)
-        energies.append(E / V)
-
-        m = compute_magnetization(spins)
-        magnetizations.append(m)
-
-        # Compute m^2 using improved estimator
-        m2 = cluster_size / V ** 2  # Since N = V
-        m2_improved.append(m2)
-
-        # Compute susceptibility
-        chi, _ = compute_susceptibility_with_estimator(magnetizations, V, T)
-
-        # # Compute F
-        # F = compute_F(spins, L)
-
-        # # Compute xi_2nd
-        # xi_2nd = compute_xi_second_moment(chi, F, L)
-        # xi_2nd_values.append(xi_2nd)
-
-    # Convert lists to NumPy arrays
-    magnetizations = np.array(magnetizations)
-    energies = np.array(energies)
-    m2_improved = np.array(m2_improved)
-    # correlation_lengths = np.array(correlation_lengths)
-    # structure_factors = np.array(structure_factors)  # Shape: (n_steps, num_q_vectors)
-    # xi_2nd_values = np.array(xi_2nd_values)
-
-    # Compute averages and errors
-    # xi_mean = np.mean(xi_2nd_values)
-    # xi_std = np.std(xi_2nd_values) / np.sqrt(n_steps)
-
-    # Compute autocorrelation function and time for m^2
-    autocorr_m2 = compute_autocorrelation(m2_improved)
-    tau_int_m2 = estimate_autocorrelation_time(autocorr_m2)
-    print(f"Integrated Autocorrelation Time for m^2: {tau_int_m2:.2f}")
-
-    # Compute susceptibility, specific heat, and Binder cumulant with errors
-    chi, error_chi = compute_susceptibility_with_estimator(magnetizations, V, T)
-    C, error_C = compute_specific_heat(energies, V, T)
-    U, error_U = compute_binder_cumulant(magnetizations, V)
-
-    # F = compute_F(spins, L)
-
-    # Compute average structure factor and its error
-    # S_q_mean = np.mean(structure_factors, axis=0)  # Mean over steps, shape: (num_q_vectors,)
-    # S_q_std = np.std(structure_factors, axis=0) / np.sqrt(n_steps)
-
-    # Compute average correlation length and its error
-    # xi_mean = np.mean(correlation_lengths)
-    # xi_std = np.std(correlation_lengths) / np.sqrt(n_steps)
-
-    return {
-        'magnetizations': magnetizations,
-        'energies': energies,
-        'cluster_sizes': cluster_sizes,
-        'm2_improved': m2_improved,
-        'autocorrelation_time': tau_int_m2,
-        'susceptibility': (chi, error_chi),
-        'specific_heat': (C, error_C),
-        'binder_cumulant': (U, error_U),
-        # 'structure_factor': (S_q_mean, S_q_std),
-        # 'correlation_length': (xi_mean, xi_std),
-        'spins': spins,  # Return spins for further analysis if needed
-    }
-
-def improved_simulate_all_data(L_list, T_list, J, n_steps, n_equil):
-    all_data = {}
-    for L in L_list:
-        all_data[L] = {}
-        V = L ** 3
-
-        for T in T_list:
-            all_data[L][T] = run_improved_simulation(L, J, T, n_steps, n_equil)
-            U, error_U = all_data[L][T]['binder_cumulant']
-            chi, error_chi = all_data[L][T]['susceptibility']
-            C, error_C = all_data[L][T]['specific_heat']
-            # xi, error_xi = all_data[L][T]['correlation_length']
-
-            print(f"L={L}, T={T:.2f}, Binder Cumulant U={U:.4f}, "
-                  f"Susceptibility={chi:.4f}, Specific Heat={C:.4f}")
-            #   f"Correlation Length={xi:.4f}")
-
-    return all_data
 
 # Plotting functions
 def plot_simulation_results(simulation_results, L_list, T_list):
