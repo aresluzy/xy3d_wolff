@@ -37,6 +37,10 @@ Below is a minimal working example showing how to:
 4. Plot and fit observables  
 5. Animated visualization of spin orientations
 
+These features can be achieved in examples/wolff_basic_demo.py by choosing initial parameters
+you want and start the simulation. If you want to perform fittings, examples/Advanced_fitting_demo.py shows 
+the ways to call several critical fitting functions in src/core.py.
+
 This assumes you installed the project via:
 
 ```bash
