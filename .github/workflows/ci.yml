@@ -29,4 +29,5 @@ jobs:
         run: uv pip install -e .
 
       - name: Run pytest
-        run: uv run pytest -q
+        run: PYTHONPATH=. uv run pytest -q
+
